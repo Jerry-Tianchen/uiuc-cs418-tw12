@@ -46,6 +46,7 @@ void main() {
   vec4 neg_view = uModelViewMatrix * vec4(aVertexPosition, 1.0);
   vView = normalize(-neg_view.xyz);
   gl_Position = uProjectionMatrix*uModelViewMatrix*vec4(aVertexPosition, 1.0);
+
 }
 `;
 
@@ -69,21 +70,29 @@ uniform sampler2D uSampler3;
 
 out vec4 outColor;
     
-void main() {                                             // Per-pixel shading 10ptx
+void main() {                 // ----------------------- Per-pixel shading 10ptx
 
   vec3 vNNormal = normalize(vNormal);
 
-  //Use normal to choose stadium reflection -- Reflective Surface 10ptx
+  // --------------------------------------------------- Use normal to choose stadium reflection -- Reflective Surface 10ptx
   vec2 vNTexCoord = vec2((vNNormal.x + 1.0)/2.0, (vNNormal.y + 1.0)/2.0);
   vec3 stadium = vec3(texture(uSampler2, vNTexCoord));
 
-  //Use Position to do cylindral mapping -- Surface Texture 10ptx
+  // --------------------------------------------------- Use Position to do cylindral mapping -- Surface Texture 10ptx
   vec2 vILTexCoord = vec2(0.0, 0.0);
   vILTexCoord = vec2(atan(vPosition.z, -vPosition.x) / (2.0*3.1415926), vPosition.y*2.0 + 0.5);
   vec3 illinois = vec3(texture(uSampler, vILTexCoord));
 
+  // --------------------------------------------------- Procedural Texture -- EC-10ptx
+  // Still use the illinois TexCoord
+  vec3 c = vec3(0.0, 0.0, 0.0);
+  if (vILTexCoord[1] < 0.2 || (vILTexCoord[1] < 0.6 && vILTexCoord[1] > 0.4) || vILTexCoord[1] > 0.8){
+    c = 0.35 * illinois + 0.5 * stadium + 0.15 * vec3(0.0, 1.0, 1.0);
+  } else {
+    c = 0.5 * illinois + 0.5 * stadium;
+  }
 
-  //Bump Mapping for Illinois
+  // --------------------------------------------------- Bump Mapping for Illinois -- EC-20ptx
   vec3 pt = normalize(vec3(0.0, 1.0, 0.0));
   vec3 ps = normalize(vec3(1.0, 0.0, 0.0));
 
@@ -97,30 +106,34 @@ void main() {                                             // Per-pixel shading 1
   float illinois_height_dt = texture(uSampler3, vILTexCoord_dt).r;
 
 
-  vec3 nPrime = vNNormal -  ((illinois_height_ds - illinois_height)/incre) * vNNormal * pt + 
-                            ((illinois_height_dt - illinois_height)/incre) * vNNormal * ps;
+  vec3 nPrime = normalize(vNNormal -  ((illinois_height_ds - illinois_height)/incre) * vNNormal * pt + 
+                            ((illinois_height_dt - illinois_height)/incre) * vNNormal * ps);
 
 
-  vec3 c = 0.5 * illinois + 0.5 * stadium;
-
-  //Diffuse lighting -- 10ptx
+  // --------------------------------------------------- Diffuse lighting -- 10ptx
   vec3 dl = vec3(1.0, 1.0, 1.0) * dot(nPrime, vLight);
 
-  //Specular lighting -- 10ptx
+  // --------------------------------------------------- Specular lighting -- 10ptx
   vec3 r = 2.0 * (dot(nPrime, vLight)) * nPrime - vLight;
   vec3 sl = vec3(1.0, 1.0, 1.0) * pow(max(0.0 , dot(vView, r)), 10.0);
 
+
+  // --------------------------------------------------- Specular lighting via Gaussian distribution -- EC-10ptx
+  vec3 half_h = normalize(vLight + vView);
+  float angle_h = acos(dot(half_h, vNNormal));
+  float gau = exp(-1.0 * pow(angle_h/0.2, 2.0));
+  vec3 sl_gau = vec3(1.0, 1.0, 1.0) * gau;
+
   //Combination
   vec4 final = vec4(0.0, 0.0, 0.0, 1.0);
-  final.y = min(1.0, c.y * (0.5 + 0.4 * dl.x + 0.5 * sl.x));
-  final.x = min(1.0, c.x * (0.5 + 0.4 * dl.y + 0.5 * sl.y));
-  final.z = min(1.0, c.z * (0.5 + 0.4 * dl.z + 0.5 * sl.z));
+  final.y = min(1.0, c.y * (0.4 + 0.7 * dl.x + 0.5 * sl_gau.x));
+  final.x = min(1.0, c.x * (0.4 + 0.7 * dl.y + 0.5 * sl_gau.y));
+  final.z = min(1.0, c.z * (0.4 + 0.7 * dl.z + 0.5 * sl_gau.z));
+
 
 
   outColor = final;
-  
-  // vec3 test_illinois_height = vec3(texture(uSampler3, vILTexCoord));
-  // outColor = vec4(illinois, 1.0);
+
 }
 `;
 
